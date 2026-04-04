@@ -30,11 +30,11 @@ class ReviewDataMetaBox {
       'id' => 'ww_review_date',
       'type' => 'date',
     ),
-    // array(
-    //   'label' => 'Phone',
-    //   'id' => 'ww_review_tel',
-    //   'type' => 'tel',
-    // ),
+    array(
+      'label' => 'Phone',
+      'id' => 'ww_review_tel',
+      'type' => 'tel',
+    ),
     array(
       'label' => 'Stars',
       'id' => 'ww_review_stars',

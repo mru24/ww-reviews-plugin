@@ -610,17 +610,29 @@ class WWReviewsPlugin {
         <?php wp_nonce_field('ww_review_submit_nonce', 'ww_nonce'); ?>
 
         <div class="form-group">
-          <label>Name</label>
+          <label>Name *</label>
           <input type="text" name="reviewer_name" required>
         </div>
 
         <div class="form-group">
-          <label>Email</label>
+          <label>Email *</label>
           <input type="email" name="reviewer_email" required>
         </div>
 
         <div class="form-group">
-          <label>Rating</label>
+          <label for="reviewer_tel">Telephone (Optional)</label>
+          <input type="tel"
+                name="reviewer_tel"
+                id="reviewer_tel"
+                pattern="[0-9+\-\s\(\)]+"
+                placeholder="e.g., 07700 900123 or +44 7700 900123"
+                title="Please enter a valid phone number"
+                value="">
+          <!-- <small class="form-text text-muted">Optional - only used to contact you about your review</small> -->
+        </div>
+
+        <div class="form-group">
+          <label>Rating *</label>
           <div class="ww-star-rating">
             <?php
             for ($i = 5; $i >= 1; $i--):
@@ -633,13 +645,16 @@ class WWReviewsPlugin {
         </div>
 
         <div class="form-group">
-          <label>Review</label>
+          <label>Review *</label>
           <textarea name="reviewer_content" required></textarea>
         </div>
 
         <div class="form-group">
           <label>Extra Info (e.g. Location)</label>
           <input type="text" name="reviewer_info">
+        </div>
+        <div class="form-group" style="margin-top:-20px;">
+          <small>* fields required</small>
         </div>
 
         <button type="submit" class="ww-submit-btn btn btn-primary">Submit Review</button>
@@ -675,6 +690,9 @@ class WWReviewsPlugin {
         #<?php echo $unique_id; ?> .ww-star-rating label:hover ~ label,
         #<?php echo $unique_id; ?> .ww-star-rating input:checked ~ label {
           color: #FFCC00 !important;
+        }
+        #<?php echo $unique_id; ?> small {
+          font-size: 14px;
         }
         <?php echo $raw_css; ?>
       </style>
@@ -726,6 +744,7 @@ class WWReviewsPlugin {
 
     $name    = sanitize_text_field($_POST['reviewer_name']);
     $email   = sanitize_email($_POST['reviewer_email']);
+    $tel = $this->sanitize_telephone($_POST['reviewer_tel']);
     $content = sanitize_textarea_field($_POST['reviewer_content']);
     $stars   = intval($_POST['reviewer_stars']);
     if ($stars < 1 || $stars > 5) {
@@ -740,6 +759,7 @@ class WWReviewsPlugin {
     ));
     if ($post_id) {
       update_post_meta($post_id, 'ww_review_stars', $stars);
+      update_post_meta($post_id, 'ww_review_tel', $tel);
       update_post_meta($post_id, 'ww_review_email', $email);
       update_post_meta($post_id, 'ww_review_info', $info);
       update_post_meta($post_id, 'ww_review_date', date('Y-m-d'));
@@ -748,6 +768,14 @@ class WWReviewsPlugin {
     } else {
       wp_send_json_error('Could not save review.');
     }
+  }
+  private function sanitize_telephone($telephone) {
+    $cleaned = preg_replace('/[^0-9+\-\s\(\)\.]/', '', $telephone);
+    $cleaned = trim($cleaned);
+    if (strlen($cleaned) > 20) {
+      $cleaned = substr($cleaned, 0, 20);
+    }
+    return $cleaned;
   }
 	public function sendReviewEmail() {
 		if ( ! isset($_POST['_wpnonce']) || ! wp_verify_nonce($_POST['_wpnonce'], 'send_review_email') ) {
