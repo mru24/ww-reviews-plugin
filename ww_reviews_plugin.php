@@ -6,14 +6,17 @@
  */
 
  /*
- Plugin Name: WW Reviews Plugin
- Plugin URI:
- Description: WordPress plugin for managing customer reviews with star ratings, custom templates, and email invitations.
- Version: 3.1.1
- Author: Val Wroblewski
- Author URI:
- Licence: GPLv2 or later
- Text-Domain: ww-reviews-domain
+  * Plugin Name: WW Reviews Plugin
+  * Plugin URI:
+  * Description: WordPress plugin for managing customer reviews with star ratings, custom templates, and email invitations.
+  * Version: 3.1.1
+  * Author: Val Wroblewski
+  * Author URI:
+  * Licence: GPLv2 or later
+  * Text-Domain: ww-reviews-domain
+  * Domain Path: /languages
+  * Requires at least: 5.0
+  * Requires PHP: 7.2
   */
 
 if( !defined( 'ABSPATH' )) { die; }
@@ -128,9 +131,12 @@ class WWReviewsPlugin {
       $this->admin_page,
       array($this, 'admin_page_display'));
 	}
-	public function admin_page_display() {
-		require_once 'templates/settings.php';
-	}
+  public function admin_page_display() {
+    if (!current_user_can('manage_options')) {
+      wp_die('Unauthorized user');
+    }
+    require_once 'templates/settings.php';
+  }
 	public function plugins_page_settings_link( $links ) {
 		$settings_link = '<a href="edit.php?post_type='.$this->custom_post.'&page='.$this->admin_page.'">Settings</a>';
 		array_push( $links, $settings_link );
@@ -280,19 +286,15 @@ class WWReviewsPlugin {
       $post_id = get_the_ID();
       $status   = get_post_meta($post_id, 'ww_review_active', true);
       if ($status) {
-        $name     = strip_tags(get_the_title());
-        $content  = strip_tags(get_the_content());
-        $excerpt  = strip_tags(get_the_excerpt());
+        $name = esc_html(get_the_title());
+        $content = wp_kses_post(get_the_content());
+        $excerpt = strip_tags(get_the_excerpt());
         $raw_info = strip_tags(get_post_meta($post_id, 'ww_review_info', true));
         $raw_date = get_post_meta($post_id, 'ww_review_date', true);
-        $date     = $raw_date ? explode('-', strip_tags($raw_date)) : ['00', '00', '0000'];
+        $date = $raw_date ? explode('-', strip_tags($raw_date)) : ['00', '00', '0000'];
         $dateReady = isset($date[2]) ? $date[2].'/'.$date[1].'/'.$date[0] : '';
-        $email    = strip_tags(get_post_meta($post_id, 'ww_review_email', true));
-        $tel      = strip_tags(get_post_meta($post_id, 'ww_review_tel', true));
-        $stars    = strip_tags(get_post_meta($post_id, 'ww_review_stars', true));
-        $bg       = strip_tags(get_post_meta($post_id, 'ww_review_bg', true));
-        $col      = strip_tags(get_post_meta($post_id, 'ww_review_col', true));
-
+        $email = strip_tags(get_post_meta($post_id, 'ww_review_email', true));
+        $stars = strip_tags(get_post_meta($post_id, 'ww_review_stars', true));
         $info = !empty($raw_info) ? '<span class="ww-review-info"> - ' . $raw_info . '</span>' : '';
 
         $starsHtml = '<span class="ww-review-stars-container">';
@@ -472,6 +474,9 @@ class WWReviewsPlugin {
     $email   = sanitize_email($_POST['reviewer_email']);
     $content = sanitize_textarea_field($_POST['reviewer_content']);
     $stars   = intval($_POST['reviewer_stars']);
+    if ($stars < 1 || $stars > 5) {
+      wp_send_json_error('Invalid rating');
+    }
     $info    = sanitize_text_field($_POST['reviewer_info']);
     $post_id = wp_insert_post(array(
       'post_title'   => $name,
@@ -523,6 +528,13 @@ class WWReviewsPlugin {
     } else {
       error_log('Review email failed for post ID: ' . $postID);
     }
+  }
+  public function load_textdomain() {
+    load_plugin_textdomain(
+      'ww-reviews',
+      false,
+      dirname(plugin_basename(__FILE__)) . '/languages/'
+    );
   }
 }
 
