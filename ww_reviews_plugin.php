@@ -75,6 +75,8 @@ class WWReviewsPlugin {
 
     add_action('wp_ajax_submit_user_review', array($this, 'handle_review_submission'));
     add_action('wp_ajax_nopriv_submit_user_review', array($this, 'handle_review_submission'));
+    add_action('wp_ajax_load_more_reviews', array($this, 'handle_load_more_reviews'));
+    add_action('wp_ajax_nopriv_load_more_reviews', array($this, 'handle_load_more_reviews'));
 
     add_action('admin_enqueue_scripts', function() {
       wp_localize_script('ww-scripts', 'ww_auth', array(
@@ -152,6 +154,9 @@ class WWReviewsPlugin {
 			['name'=>'_list_template', 'method'=>'listTemplateHtml', 'label'=>'List template'],
 			['name'=>'_list_template_styles', 'method'=>'listTemplateStylesHtml', 'label'=>'List template styles'],
 			['name'=>'_list_template_fields', 'method'=>'listTemplateFieldsHtml', 'label'=>'List template fields'],
+      ['name'=>'_reviews_per_page', 'method'=>'reviewsPerPageHtml', 'label'=>'Reviews Per Page'],
+      ['name'=>'_enable_load_more', 'method'=>'enableLoadMoreHtml', 'label'=>'Enable Load More Button'],
+      ['name'=>'_load_more_text', 'method'=>'loadMoreTextHtml', 'label'=>'Load More Button Text'],
       ['name'=>'_star_color', 'method'=>'starColorPicker', 'label'=>'Review Star Colour'],
       ['name'=>'_spacer_3', 'method'=>'spacerHtml', 'label'=>'<h3>Submit Review Form</h3>'],
       ['name'=>'_submit_form_styles', 'method'=>'submitFormStylesHtml', 'label'=>'Submit Form styles'],
@@ -227,7 +232,33 @@ class WWReviewsPlugin {
 		<textarea style="width:100%;height:80px;resize:none;font-size: 19px;" readonly>[name] [info] [excerpt] [content] [date] [stars]</textarea>
   <?php
 	}
-	public function listShortcodeHtml() { ?>
+  public function reviewsPerPageHtml() { ?>
+    <input type="number"
+           name="<?php echo $this->plugin.'_reviews_per_page'; ?>"
+           value="<?php echo esc_attr(get_option($this->plugin.'_reviews_per_page', 5)); ?>"
+           min="1"
+           max="50"
+           style="width: 100px;" />
+    <p class="description">Number of reviews to display initially</p>
+  <?php
+  }
+  public function enableLoadMoreHtml() { ?>
+    <input type="checkbox"
+           name="<?php echo $this->plugin.'_enable_load_more'; ?>"
+           value="1"
+           <?php checked(1, get_option($this->plugin.'_enable_load_more', 1)); ?> />
+    <p class="description">Show "Load More" button to load additional reviews</p>
+  <?php
+  }
+  public function loadMoreTextHtml() { ?>
+    <input type="text"
+           name="<?php echo $this->plugin.'_load_more_text'; ?>"
+           value="<?php echo esc_attr(get_option($this->plugin.'_load_more_text', 'Load More Reviews')); ?>"
+           style="width: 200px;" />
+    <p class="description">Text displayed on the load more button</p>
+  <?php
+  }
+  public function listShortcodeHtml() { ?>
 		<textarea style="width:100%;height:50px;resize:vertical;" readonly><?php echo '[ww_reviews]'; ?></textarea>
   <?php
 	}
@@ -270,81 +301,304 @@ class WWReviewsPlugin {
 		add_shortcode( 'ww_reviews', array($this, 'create_wp_query_shortcode' ));
     add_shortcode('ww_review_form', array($this, 'render_review_form'));
 	}
-	public function create_wp_query_shortcode() {
+	public function create_wp_query_shortcode($atts) {
+    $atts = shortcode_atts(array(
+      'per_page' => get_option($this->plugin.'_reviews_per_page', 5),
+      'load_more' => get_option($this->plugin.'_enable_load_more', 1),
+      'button_text' => get_option($this->plugin.'_load_more_text', 'Load More Reviews'),
+    ), $atts, 'ww_reviews');
+
     $unique_id = 'ww-reviews-' . uniqid();
+    $per_page = intval($atts['per_page']);
+    $enable_load_more = $atts['load_more'] == '1' || $atts['load_more'] === true;
+
+    $total_count = new WP_Query(array(
+      'post_type' => $this->custom_post,
+      'meta_query' => array(
+        array(
+          'key' => 'ww_review_active',
+          'value' => '1',
+          'type' => 'NUMERIC'
+        )
+      ),
+      'posts_per_page' => -1,
+      'fields' => 'ids'
+    ));
+    $total_reviews = $total_count->found_posts;
+    wp_reset_postdata();
+
     $loop = new WP_Query(array(
       'post_type' => $this->custom_post,
+      'meta_query' => array(
+        array(
+          'key' => 'ww_review_active',
+          'value' => '1',
+          'type' => 'NUMERIC'
+        )
+      ),
       'orderby' => 'post_id',
       'order' => 'DESC',
-      'posts_per_page' => -1,
+      'posts_per_page' => $per_page,
+      'paged' => 1,
     ));
+    $reviews_html = $this->generate_reviews_html($loop);
+
+    $output = '<div id="' . $unique_id . '" class="ww-reviews-wrapper"
+                data-total="' . $total_reviews . '"
+                data-per-page="' . $per_page . '"
+                data-loaded="' . $per_page . '"
+                data-paged="1">';
+    $output .= '<div class="ww-reviews-container">';
+    $output .= $reviews_html;
+    $output .= '</div>';
+
+    if ($enable_load_more && $total_reviews > $per_page) {
+      $output .= '<div class="ww-load-more-container">';
+      $output .= '<button type="button" class="ww-load-more-btn" data-page="2">'
+                  . esc_html($atts['button_text']) . '</button>';
+      $output .= '<div class="ww-loading-spinner" style="display:none;">Loading...</div>';
+      $output .= '</div>';
+    }
+
+    $output .= '</div>';
+
+    $raw_css = get_option($this->plugin.'_list_template_styles');
+    $scoped_css = $this->scope_css($raw_css, $unique_id);
+
+    $load_more_css = '
+        .ww-load-more-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .ww-load-more-btn {
+            background: #0073aa;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s ease;
+        }
+        .ww-load-more-btn:hover {
+            background: #005a87;
+        }
+        .ww-load-more-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .ww-loading-spinner {
+            display: inline-block;
+            margin-left: 10px;
+            color: #666;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .ww-loading-spinner::before {
+            content: "";
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #0073aa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+    ';
+
+    $style_tag = '<style>' . $scoped_css . $load_more_css . '</style>';
+    $script_tag = $this->get_load_more_script($unique_id);
+    return $style_tag . $output . $script_tag;
+  }
+  private function generate_reviews_html($loop) {
     $reviews_html = '';
     $raw_template = get_option($this->plugin.'_list_template');
-    $starColor    = esc_attr(get_option($this->plugin.'_star_color'));
+    $starColor = esc_attr(get_option($this->plugin.'_star_color', '#FFCC00'));
+
     while ($loop->have_posts()) {
       $loop->the_post();
       $post_id = get_the_ID();
-      $status   = get_post_meta($post_id, 'ww_review_active', true);
-      if ($status) {
-        $name = esc_html(get_the_title());
-        $content = wp_kses_post(get_the_content());
-        $excerpt = strip_tags(get_the_excerpt());
-        $raw_info = strip_tags(get_post_meta($post_id, 'ww_review_info', true));
-        $raw_date = get_post_meta($post_id, 'ww_review_date', true);
-        $date = $raw_date ? explode('-', strip_tags($raw_date)) : ['00', '00', '0000'];
-        $dateReady = isset($date[2]) ? $date[2].'/'.$date[1].'/'.$date[0] : '';
-        $email = strip_tags(get_post_meta($post_id, 'ww_review_email', true));
-        $stars = strip_tags(get_post_meta($post_id, 'ww_review_stars', true));
-        $info = !empty($raw_info) ? '<span class="ww-review-info"> - ' . $raw_info . '</span>' : '';
 
-        $starsHtml = '<span class="ww-review-stars-container">';
-        for ($i = 1; $i <= 5; $i++) {
-          $color = ($i <= (int)$stars) ? $starColor : '#cccccc';
+      // Double-check review is active
+      $status = get_post_meta($post_id, 'ww_review_active', true);
+      if (!$status) continue;
+
+      $name = esc_html(strip_tags(get_the_title()));
+      $content = wp_kses_post(get_the_content());
+      $excerpt = esc_html(strip_tags(get_the_excerpt()));
+      $raw_info = esc_html(strip_tags(get_post_meta($post_id, 'ww_review_info', true)));
+      $raw_date = get_post_meta($post_id, 'ww_review_date', true);
+      $date = $raw_date ? explode('-', strip_tags($raw_date)) : ['00', '00', '0000'];
+      $dateReady = isset($date[2]) ? $date[2].'/'.$date[1].'/'.$date[0] : '';
+      $stars = intval(strip_tags(get_post_meta($post_id, 'ww_review_stars', true)));
+
+      $info = !empty($raw_info) ? '<span class="ww-review-info"> - ' . $raw_info . '</span>' : '';
+
+      $starsHtml = '<span class="ww-review-stars-container">';
+      for ($i = 1; $i <= 5; $i++) {
+          $color = ($i <= $stars) ? $starColor : '#cccccc';
           $starsHtml .= '<span style="color:' . $color . '; font-size: 25px;">&#9733;</span>';
-        }
-        $starsHtml .= '</span>';
-        $templateData = array(
-          'name'    => $name,
-          'content' => $content,
-          'excerpt' => $excerpt,
-          'info'    => $info,
-          'email'   => $email,
-          'tel'     => $tel,
-          'date'    => $dateReady,
-          'stars'   => $starsHtml,
-          'bg'      => $bg,
-          'col'     => $col,
-        );
-        $text = $raw_template;
-        foreach ($templateData as $key => $value){
-          $text = str_replace("[$key]", $value, $text);
-        }
-        $reviews_html .= $text;
       }
+      $starsHtml .= '</span>';
+
+      $templateData = array(
+        'name'    => $name,
+        'content' => $content,
+        'excerpt' => $excerpt,
+        'info'    => $info,
+        'date'    => $dateReady,
+        'stars'   => $starsHtml,
+      );
+
+      $text = $raw_template;
+      foreach ($templateData as $key => $value) {
+        $text = str_replace("[$key]", $value, $text);
+      }
+      $reviews_html .= $text;
     }
-    $output = '<div id="' . $unique_id . '" class="ww-reviews-wrapper">';
-    $output .= $reviews_html;
-    $output .= '</div>';
-    $raw_css = get_option($this->plugin.'_list_template_styles');
+    wp_reset_postdata();
+
+    return $reviews_html;
+  }
+  private function scope_css($css, $scope_id) {
+    if (empty($css)) return '';
+
     $scoped_css = preg_replace_callback(
       '/@media[^{]+\{([\s\S]+?\})\s*\}/',
-      function ($matches) use ($unique_id) {
-        $inner = preg_replace(
-          '/([^\r\n,{}]+)(?=[^{}]*\{)/',
-          '#' . $unique_id . ' $1',
-          $matches[1]
-        );
-        return str_replace($matches[1], $inner, $matches[0]);
+      function ($matches) use ($scope_id) {
+          $inner = preg_replace(
+              '/([^\r\n,{}]+)(?=[^{}]*\{)/',
+              '#' . $scope_id . ' $1',
+              $matches[1]
+          );
+          return str_replace($matches[1], $inner, $matches[0]);
       },
-      $raw_css
+      $css
     );
+
     $scoped_css = preg_replace(
       '/(^|})([^{@}]+){/',
-      '$1#' . $unique_id . ' $2{',
+      '$1#' . $scope_id . ' $2{',
       $scoped_css
     );
-    $style_tag = '<style>' . $scoped_css . '</style>';
-    return $style_tag . $output;
+
+    return $scoped_css;
+  }
+  private function get_load_more_script($unique_id) {
+    ob_start();
+    ?>
+    <script>
+    (function($) {
+      $(document).ready(function() {
+        var container = $('#<?php echo $unique_id; ?>');
+        var loadMoreBtn = container.find('.ww-load-more-btn');
+        var spinner = container.find('.ww-loading-spinner');
+        var reviewsContainer = container.find('.ww-reviews-container');
+        var currentPage = parseInt(container.data('paged')) || 1;
+        var perPage = parseInt(container.data('per-page')) || 5;
+        var totalReviews = parseInt(container.data('total')) || 0;
+        var loadedCount = parseInt(container.data('loaded')) || perPage;
+        var isLoading = false;
+
+        if (loadMoreBtn.length === 0) return;
+
+        loadMoreBtn.on('click', function() {
+          if (isLoading) return;
+
+          var nextPage = currentPage + 1;
+          var startIndex = loadedCount;
+          if (loadedCount >= totalReviews) {
+            loadMoreBtn.prop('disabled', true).text('No more reviews');
+            return;
+          }
+
+          isLoading = true;
+          loadMoreBtn.prop('disabled', true);
+          spinner.show();
+
+                $.ajax({
+                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                    type: 'POST',
+                    data: {
+                        action: 'load_more_reviews',
+                        page: nextPage,
+                        per_page: perPage,
+                        nonce: '<?php echo wp_create_nonce('ww_load_more_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            reviewsContainer.append(response.data.html);
+                            currentPage = nextPage;
+                            loadedCount += response.data.count;
+                            container.data('paged', currentPage);
+                            container.data('loaded', loadedCount);
+
+                            if (loadedCount >= totalReviews) {
+                                loadMoreBtn.prop('disabled', true).text('No more reviews');
+                            } else {
+                                loadMoreBtn.prop('disabled', false);
+                            }
+                        } else {
+                            console.error('Error loading reviews:', response.data);
+                            loadMoreBtn.prop('disabled', false);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('AJAX error:', error);
+                        loadMoreBtn.prop('disabled', false);
+                        alert('Error loading reviews. Please try again.');
+                    },
+                    complete: function() {
+                        isLoading = false;
+                        spinner.hide();
+                    }
+                });
+            });
+        });
+    })(jQuery);
+    </script>
+    <?php
+    return ob_get_clean();
+  }
+  public function handle_load_more_reviews() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ww_load_more_nonce')) {
+      wp_send_json_error('Security check failed');
+      wp_die();
+    }
+
+    $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
+    $per_page = isset($_POST['per_page']) ? intval($_POST['per_page']) : 5;
+
+    if ($page < 1) $page = 1;
+    if ($per_page < 1) $per_page = 5;
+
+    $loop = new WP_Query(array(
+        'post_type' => $this->custom_post,
+        'meta_query' => array(
+            array(
+                'key' => 'ww_review_active',
+                'value' => '1',
+                'type' => 'NUMERIC'
+            )
+        ),
+        'orderby' => 'post_id',
+        'order' => 'DESC',
+        'posts_per_page' => $per_page,
+        'paged' => $page,
+    ));
+
+    $html = $this->generate_reviews_html($loop);
+    $count = $loop->post_count;
+
+    wp_send_json_success(array(
+        'html' => $html,
+        'count' => $count,
+        'page' => $page
+    ));
+    wp_die();
   }
   public function render_review_form() {
     $unique_id = 'ww-form-' . uniqid();
