@@ -1,0 +1,75 @@
+/* Style the tab */
+#tabs .tabnav {
+  overflow: hidden;
+  border: 1px solid #ccc;
+  background-color: #f1f1f1;
+}
+
+/* Style the buttons that are used to open the tab content */
+#tabs .tabnav button {
+  background-color: inherit;
+  float: left;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  transition: 0.3s;
+}
+
+/* Change background color of buttons on hover */
+#tabs .tabnav button:hover {
+  background-color: #ddd;
+}
+
+/* Create an active/current tablink class */
+#tabs .tabnav button.active {
+  background-color: #ccc;
+}
+
+/* Style the tab content */
+#tabs .tab {
+  display: none;
+  padding: 20px 12px 6px;
+  border: 1px solid #ccc;
+  border-top: none;
+}
+#tabs .tab.active {
+  display: block;
+}
+
+#tabs .tab {
+  animation: fadeEffect 1s; /* Fading effect takes 1 second */
+}
+
+@keyframes fadeEffect {
+  from {opacity: 0;}
+  to {opacity: 1;}
+}
+iframe#ww_reviews_email_template_ifr {
+  height: 400px !important;
+}
+textarea {
+  resize: none;
+}
+
+table.wp-list-table input.btn {
+    font-size: 12px;
+    padding: 3px 12px 5px;
+    background: #388723;
+    color: white;
+    border-radius: 3px;
+}
+table.wp-list-table tr td span.active,
+table.wp-list-table tr td span.disabled {
+    font-size: 12px;
+    padding: 2px 6px 4px;
+    border-radius: 3px;
+}
+table.wp-list-table tr td span.active {
+    background: #388723;
+    color: white;
+}
+table.wp-list-table tr td span.disabled {
+    background: #aaa;
+    color: #333;
+}

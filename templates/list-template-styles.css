@@ -1,0 +1,17 @@
+.row.flex { display: flex; }
+.row.flex > .col { flex: 1; }
+p { margin: 0 0 15px; }
+strong { font-weight: bold; }
+.left p.excerpt { font-size: 24px; font-weight: bold; }
+.left { padding-right: 30px; }
+.right { border-left: 4px solid #ef8923; padding-left: 30px; padding-bottom: 10px; }
+.right p { font-size: 17px; }
+.bottom { background: #e5e5e5; padding: 20px; margin: 15px 0 40px; }
+.bottom p.content { font-size: 18px; }
+.ww-review-stars-container span { font-size: 30px !important; }
+
+@media (max-width: 768px) {
+  .row.flex { display: block; }
+  .left p.excerpt { font-size: 19px; font-weight: bold; }
+  .bottom p.content { font-size: 17px; }
+}
