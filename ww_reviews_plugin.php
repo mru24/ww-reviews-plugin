@@ -9,7 +9,7 @@
   * Plugin Name: WW Reviews Plugin
   * Plugin URI:
   * Description: WordPress plugin for managing customer reviews with star ratings, custom templates, and email invitations.
-  * Version: 3.1.1
+  * Version: 3.1.2
   * Author: Val Wroblewski
   * Author URI:
   * Licence: GPLv2 or later
@@ -27,7 +27,7 @@ require_once 'includes/ReviewMetaBoxClass.php';
 
 class WWReviewsPlugin {
 	public $plugin;
-  public $plugin_version="3.1.1";
+  public $plugin_version="3.1.2";
 	public $plugin_file;
 	public $plugin_nice_name;
 	public $textDomain;
@@ -64,6 +64,9 @@ class WWReviewsPlugin {
 		// PLUGINS PAGE SETTINGS LINK
 		add_filter( "plugin_action_links_$this->plugin_file", array( $this, 'plugins_page_settings_link' ));
 
+    add_filter('option_page_capability_' . $this->settings_group, function() {
+      return 'edit_posts';
+    });
 		// REGISTER SETTING
 		add_action('admin_init', array($this, 'register_settings'));
 
@@ -134,7 +137,7 @@ class WWReviewsPlugin {
       array($this, 'admin_page_display'));
 	}
   public function admin_page_display() {
-    if (!current_user_can('manage_options')) {
+    if (!current_user_can('edit_posts')) {
       wp_die('Unauthorized user');
     }
     require_once 'templates/settings.php';
@@ -422,7 +425,6 @@ class WWReviewsPlugin {
       $loop->the_post();
       $post_id = get_the_ID();
 
-      // Double-check review is active
       $status = get_post_meta($post_id, 'ww_review_active', true);
       if (!$status) continue;
 
@@ -576,27 +578,27 @@ class WWReviewsPlugin {
     if ($per_page < 1) $per_page = 5;
 
     $loop = new WP_Query(array(
-        'post_type' => $this->custom_post,
-        'meta_query' => array(
-            array(
-                'key' => 'ww_review_active',
-                'value' => '1',
-                'type' => 'NUMERIC'
-            )
-        ),
-        'orderby' => 'post_id',
-        'order' => 'DESC',
-        'posts_per_page' => $per_page,
-        'paged' => $page,
+      'post_type' => $this->custom_post,
+      'meta_query' => array(
+          array(
+              'key' => 'ww_review_active',
+              'value' => '1',
+              'type' => 'NUMERIC'
+          )
+      ),
+      'orderby' => 'post_id',
+      'order' => 'DESC',
+      'posts_per_page' => $per_page,
+      'paged' => $page,
     ));
 
     $html = $this->generate_reviews_html($loop);
     $count = $loop->post_count;
 
     wp_send_json_success(array(
-        'html' => $html,
-        'count' => $count,
-        'page' => $page
+      'html' => $html,
+      'count' => $count,
+      'page' => $page
     ));
     wp_die();
   }
