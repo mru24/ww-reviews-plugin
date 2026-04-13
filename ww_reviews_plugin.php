@@ -50,6 +50,7 @@ class WWReviewsPlugin {
 		// SETTINGS
 		$this->settings = $this->plugin.'_settings';
 		$this->settings_group = $this->plugin.'_settings_group';
+
 	}
 	function register() {
 
@@ -120,6 +121,11 @@ class WWReviewsPlugin {
 	function enqueue_admin_scripts() {
 		wp_enqueue_style( 'ww-styles', plugins_url( '/assets/styles-admin.css', __FILE__ ) );
     wp_enqueue_script('ww-scripts', plugins_url('/assets/main-admin.js', __FILE__), array('jquery'), $this->plugin_version, true);
+
+    wp_localize_script('ww-scripts', 'ww_auth', array(
+        'nonce' => wp_create_nonce('ww_reviews_nonce')
+    ));
+
     wp_enqueue_style( 'wp-color-picker' );
     wp_enqueue_script( 'wp-color-picker' );
 	}
@@ -138,7 +144,8 @@ class WWReviewsPlugin {
 	}
   public function admin_page_display() {
     if (!current_user_can('edit_posts')) {
-      wp_die('Unauthorized user');
+      require_once 'templates/no-access.php';
+      // wp_die('Unauthorized user');
     }
     require_once 'templates/settings.php';
   }
@@ -174,7 +181,7 @@ class WWReviewsPlugin {
           $this->settings_group,
           $this->plugin.$item['name'],
           array(
-            'sanitize_callback' => null
+            'sanitize_callback' => null,
           )
 		    );
       }
